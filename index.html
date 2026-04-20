@@ -804,7 +804,18 @@ async function loadData() {
   // ── Movimenti: prima dal localStorage, poi da dati.json ──
   const savedMov = localStorage.getItem('bilancio_movimenti');
   if (savedMov) {
-    movimenti = JSON.parse(savedMov);
+    try {
+      const parsed = JSON.parse(savedMov);
+      // Supporta sia formato compatto (array di array) che vecchio (array di oggetti)
+      if (parsed.length > 0 && Array.isArray(parsed[0])) {
+        movimenti = parsed.map(rowToMov);
+      } else {
+        movimenti = parsed;
+      }
+    } catch(e) {
+      console.error('loadData parse error:', e);
+      movimenti = [];
+    }
     _appReady = true;
     return;
   }
@@ -825,6 +836,11 @@ async function loadData() {
     }
 
     saveData();
+    if (!localStorage.getItem('bilancio_movimenti')) {
+      showLoadingScreen(false, 'Dati caricati ma storage non disponibile. Usa un server (GitHub Pages) invece di aprire il file direttamente.');
+      _appReady = true;
+      return;
+    }
     showLoadingScreen(false);
     showToast(`✓ ${movimenti.length.toLocaleString('it')} movimenti caricati`);
   } catch(e) {
@@ -863,9 +879,29 @@ function showLoadingScreen(show, errMsg) {
     if (sub) sub.innerHTML = errMsg + '<br><br><small>Usa il tab Backup → Importa JSON per caricare i dati manualmente</small>';
   }
 }
-function saveData() {
-  localStorage.setItem('bilancio_movimenti', JSON.stringify(movimenti));
+// ── FORMATO COMPATTO per localStorage (risparmia ~50% spazio) ──
+// Ogni movimento è un array: [id, aa, mm, gg, chi, modo, euro, cod, cat1, cat2, descr, note]
+const MOV_KEYS = ['id','aa','mm','gg','chi','modo','euro','cod','cat1','cat2','descr','note'];
+
+function movToRow(m) {
+  return MOV_KEYS.map(k => m[k] !== undefined ? m[k] : '');
 }
+function rowToMov(r) {
+  const m = {};
+  MOV_KEYS.forEach((k, i) => m[k] = r[i] !== undefined ? r[i] : '');
+  return m;
+}
+
+function saveData() {
+  try {
+    const rows = movimenti.map(movToRow);
+    localStorage.setItem('bilancio_movimenti', JSON.stringify(rows));
+  } catch(e) {
+    showToast('⚠️ Errore salvataggio: ' + (e.message||'storage pieno'));
+    console.error('saveData error:', e);
+  }
+}
+
 function saveContanti() {
   localStorage.setItem('bilancio_contanti', saldoContanti.toString());
 }
