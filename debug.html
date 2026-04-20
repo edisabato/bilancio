@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Debug Safari</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 16px; background: #f5f5f5; }
+  h2 { font-size: 18px; margin: 16px 0 8px; }
+  .ok  { background: #d4edda; border-left: 4px solid #28a745; padding: 8px 12px; border-radius: 4px; margin: 4px 0; font-size: 14px; }
+  .err { background: #f8d7da; border-left: 4px solid #dc3545; padding: 8px 12px; border-radius: 4px; margin: 4px 0; font-size: 14px; }
+  .inf { background: #d1ecf1; border-left: 4px solid #17a2b8; padding: 8px 12px; border-radius: 4px; margin: 4px 0; font-size: 14px; }
+  button { background: #007AFF; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-size: 15px; margin: 4px 4px 4px 0; cursor: pointer; }
+  pre { background: #fff; padding: 10px; border-radius: 4px; font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+</style>
+</head>
+<body>
+<h1 style="font-size:22px;">🔍 Debug Safari</h1>
+<div id="log"></div>
+
+<h2>Test manuali</h2>
+<button onclick="testSave()">Test salvataggio localStorage</button>
+<button onclick="testFetch()">Test fetch dati.json</button>
+<button onclick="clearStorage()">Cancella localStorage</button>
+<button onclick="showStorage()">Mostra localStorage</button>
+
+<h2>Log dettagliato</h2>
+<pre id="detail"></pre>
+
+<script>
+var log = document.getElementById('log');
+var detail = document.getElementById('detail');
+var lines = [];
+
+function add(msg, type) {
+  type = type || 'inf';
+  var div = document.createElement('div');
+  div.className = type;
+  div.textContent = msg;
+  log.appendChild(div);
+  var ts = new Date().toISOString().slice(11,23);
+  lines.push('[' + ts + '] ' + type.toUpperCase() + ': ' + msg);
+  detail.textContent = lines.join('\n');
+}
+
+// 1. Browser info
+add('Browser: ' + navigator.userAgent, 'inf');
+add('Safari: ' + (/Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent) ? 'SÌ' : 'NO'), 'inf');
+
+// 2. Test localStorage availability
+try {
+  localStorage.setItem('_test', '1');
+  var v = localStorage.getItem('_test');
+  localStorage.removeItem('_test');
+  if (v === '1') add('localStorage disponibile ✓', 'ok');
+  else add('localStorage: setItem ok ma getItem fallisce!', 'err');
+} catch(e) {
+  add('localStorage NON disponibile: ' + e.message, 'err');
+}
+
+// 3. Test localStorage quota
+try {
+  var size = 0;
+  for (var k in localStorage) {
+    if (localStorage.hasOwnProperty(k)) size += localStorage[k].length * 2;
+  }
+  add('localStorage usato: ~' + Math.round(size/1024) + ' KB su ~5120 KB', 'inf');
+} catch(e) {
+  add('Errore calcolo quota: ' + e.message, 'err');
+}
+
+// 4. Test scrittura 1MB
+try {
+  var big = new Array(500000).join('x'); // ~1MB
+  localStorage.setItem('_big', big);
+  localStorage.removeItem('_big');
+  add('Scrittura 1MB localStorage: OK ✓', 'ok');
+} catch(e) {
+  add('Scrittura 1MB localStorage FALLITA: ' + e.message, 'err');
+}
+
+// 5. Test async/await support
+try {
+  var fn = new Function('return (async function(){return 1})()');
+  fn().then(function(v) {
+    add('async/await supportato ✓ (risultato: ' + v + ')', 'ok');
+  }).catch(function(e) {
+    add('async/await errore: ' + e.message, 'err');
+  });
+} catch(e) {
+  add('async/await NON supportato: ' + e.message, 'err');
+}
+
+// 6. Test fetch
+try {
+  if (typeof fetch === 'function') add('fetch API disponibile ✓', 'ok');
+  else add('fetch API NON disponibile', 'err');
+} catch(e) {
+  add('fetch check errore: ' + e.message, 'err');
+}
+
+// 7. Protocol
+add('Protocollo: ' + location.protocol + ' (deve essere https: per pieno supporto)', location.protocol === 'https:' ? 'ok' : 'err');
+add('URL: ' + location.href, 'inf');
+
+// 8. Cookies / storage policy
+try {
+  add('cookieEnabled: ' + navigator.cookieEnabled, navigator.cookieEnabled ? 'ok' : 'err');
+} catch(e) {}
+
+// 9. Test bilancio_movimenti in storage
+var mov = localStorage.getItem('bilancio_movimenti');
+if (mov) {
+  try {
+    var parsed = JSON.parse(mov);
+    add('bilancio_movimenti trovato: ' + parsed.length + ' righe, formato: ' + (Array.isArray(parsed[0]) ? 'compatto' : 'oggetti'), 'ok');
+  } catch(e) {
+    add('bilancio_movimenti: JSON parse error: ' + e.message, 'err');
+  }
+} else {
+  add('bilancio_movimenti: NON trovato in localStorage', 'err');
+}
+
+// 10. Test optional chaining
+try {
+  var arr = [[1,2],[3,4]];
+  var v1 = arr[0]?.[1];
+  add('Optional chaining ?. supportato ✓', 'ok');
+} catch(e) {
+  add('Optional chaining NON supportato: ' + e.message, 'err');
+}
+
+// Manual tests
+function testSave() {
+  try {
+    var testData = JSON.stringify({test: true, ts: Date.now(), rows: new Array(100).fill([1,2011,1,1,'Enrico','Bancomat',100,'C3','CASA','spesa GS','gs',''])});
+    localStorage.setItem('_bilancio_test', testData);
+    var back = localStorage.getItem('_bilancio_test');
+    localStorage.removeItem('_bilancio_test');
+    if (back) add('TEST SAVE: OK - scritto e riletto ' + testData.length + ' chars ✓', 'ok');
+    else add('TEST SAVE: scritto ma non riletto!', 'err');
+  } catch(e) {
+    add('TEST SAVE ERRORE: ' + e.message, 'err');
+  }
+}
+
+function testFetch() {
+  add('Fetch dati.json in corso...', 'inf');
+  fetch('./dati.json')
+    .then(function(r) {
+      add('Fetch status: ' + r.status, r.ok ? 'ok' : 'err');
+      return r.json();
+    })
+    .then(function(d) {
+      add('dati.json OK: ' + (d.movimenti||[]).length + ' movimenti ✓', 'ok');
+    })
+    .catch(function(e) {
+      add('Fetch ERRORE: ' + e.message, 'err');
+    });
+}
+
+function clearStorage() {
+  try {
+    var keys = [];
+    for (var k in localStorage) if (localStorage.hasOwnProperty(k) && k.startsWith('bilancio')) keys.push(k);
+    keys.forEach(function(k) { localStorage.removeItem(k); });
+    add('Cancellate ' + keys.length + ' chiavi bilancio dal localStorage', 'ok');
+  } catch(e) {
+    add('Errore cancellazione: ' + e.message, 'err');
+  }
+}
+
+function showStorage() {
+  try {
+    var keys = [];
+    for (var k in localStorage) if (localStorage.hasOwnProperty(k)) {
+      var size = localStorage[k].length * 2;
+      keys.push(k + ' (' + Math.round(size/1024) + ' KB)');
+    }
+    add('localStorage keys: ' + (keys.length ? keys.join(', ') : '(vuoto)'), 'inf');
+  } catch(e) {
+    add('Errore: ' + e.message, 'err');
+  }
+}
+</script>
+</body>
+</html>

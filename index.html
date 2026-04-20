@@ -1224,7 +1224,7 @@ function renderStats() {
     catTotals[m.cat1] = (catTotals[m.cat1]||0) + Math.abs(m.euro);
   });
   const sortedCats = Object.entries(catTotals).sort((a,b)=>b[1]-a[1]);
-  const maxCat = sortedCats[0]?.[1] || 1;
+  const maxCat = (sortedCats[0] && sortedCats[0][1]) ? sortedCats[0][1] : 1;
 
   document.getElementById('cat-bars').innerHTML = sortedCats.map(([cat,tot]) => `
     <div class="cat-bar-row">
@@ -1242,7 +1242,7 @@ function renderStats() {
     chiTotals[m.chi] = (chiTotals[m.chi]||0) + Math.abs(m.euro);
   });
   const sortedChi = Object.entries(chiTotals).sort((a,b)=>b[1]-a[1]);
-  const maxChi = sortedChi[0]?.[1] || 1;
+  const maxChi = (sortedChi[0] && sortedChi[0][1]) ? sortedChi[0][1] : 1;
 
   document.getElementById('chi-bars').innerHTML = sortedChi.map(([chi,tot]) => `
     <div class="cat-bar-row">
