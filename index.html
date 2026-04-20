@@ -366,9 +366,9 @@
       <div class="cal-amount-row">
         <div class="cal-wrap">
           <div class="cal-header">
-            <button class="cal-nav" onclick="calNav(-1)">‹</button>
+            <button type="button" class="cal-nav" onclick="calNav(-1)">‹</button>
             <div class="cal-month-label" id="cal-month-label"></div>
-            <button class="cal-nav" onclick="calNav(+1)">›</button>
+            <button type="button" class="cal-nav" onclick="calNav(+1)">›</button>
           </div>
           <div class="cal-grid" id="cal-grid"></div>
         </div>
@@ -409,7 +409,7 @@
         </div>
       </div>
 
-      <button class="btn-save" id="btn-salva" onclick="salvaMov()">Salva movimento</button>
+      <button type="button" class="btn-save" id="btn-salva" onclick="salvaMov()">Salva movimento</button>
     </div>
   </div>
 
@@ -1377,13 +1377,16 @@ function isContanti(modo) {
 }
 
 function salvaMov() {
-  const euro = parseFloat(document.getElementById('inp-euro').value);
+  const euroEl = document.getElementById('inp-euro');
+  const euro = parseFloat(euroEl ? euroEl.value : '');
   if (!euro || isNaN(euro)) { showToast('Inserisci l\'importo'); return; }
   if (!formState.cat1) { showToast('Seleziona una categoria'); return; }
   if (!formState.cat2) { showToast('Seleziona una sottocategoria'); return; }
 
-  const desc = document.getElementById('inp-desc').value || formState.descr || formState.cat2;
-  const note = document.getElementById('inp-note').value;
+  const descEl = document.getElementById('inp-desc');
+  const noteEl = document.getElementById('inp-note');
+  const desc = (descEl ? descEl.value : '') || formState.descr || formState.cat2;
+  const note = noteEl ? noteEl.value : '';
 
   const newMov = {
     id: Date.now(),
@@ -1396,14 +1399,24 @@ function salvaMov() {
   movimenti.push(newMov);
   saveData();
 
-  // aggiorna saldo contanti: positivo = spesa (-), negativo = entrata (+)
   if (isContanti(formState.modo)) {
     saldoContanti = parseFloat((saldoContanti - euro).toFixed(2));
     saveContanti();
   }
 
+  // aggiorna il mese selezionato al mese del nuovo movimento
+  selMonth = { aa: formState.aa, mm: formState.mm };
+
   showToast('✓ Movimento salvato');
-  switchTab('home');
+
+  // passa al tab movimenti
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const homeScreen = document.getElementById('screen-home');
+  const homeNav    = document.getElementById('nav-home');
+  if (homeScreen) homeScreen.classList.add('active');
+  if (homeNav)    homeNav.classList.add('active');
+  renderHome();
 }
 
 // ═══════════════════════════════════════════════════
