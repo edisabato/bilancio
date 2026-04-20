@@ -99,6 +99,7 @@
   .tx-amount.expense { color: var(--text); }
   .tx-amount.income { color: var(--green); }
   .tx-date-small { font-size: 11px; color: var(--text3); margin-top: 2px; }
+  .tx-note { font-size: 11px; color: var(--text3); margin-top: 3px; font-style: italic; line-height: 1.3; }
 
   /* ── CATEGORY CHART ── */
   .chart-card { background: var(--card); border-radius: var(--radius); margin: 0 16px 12px; padding: 16px; }
@@ -261,7 +262,20 @@
 
   /* file input hidden */
   #file-import-input { display: none; }
-</style>
+
+  /* ── FILTER BAR ── */
+  .filter-bar { padding: 0 16px 8px; display: flex; flex-direction: column; gap: 6px; }
+  .filter-row { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .filter-row::-webkit-scrollbar { display: none; }
+  .filter-chip { flex-shrink: 0; display: flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 500; border: 1.5px solid var(--sep); background: var(--card); color: var(--text2); cursor: pointer; white-space: nowrap; transition: all 0.12s; }
+  .filter-chip.active { background: var(--primary); color: white; border-color: var(--primary); }
+  .filter-chip.active-cat { border-color: transparent; color: white; }
+  .filter-chip-icon { font-size: 14px; line-height: 1; }
+  .filter-label { font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.4px; padding: 0 2px; }
+  .filter-active-bar { display: flex; align-items: center; gap: 6px; padding: 0 16px 4px; flex-wrap: wrap; }
+  .filter-active-badge { display: flex; align-items: center; gap: 4px; background: var(--primary-light); color: var(--primary); font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 12px; }
+  .filter-clear-btn { font-size: 11px; font-weight: 700; color: var(--red); background: none; border: none; cursor: pointer; padding: 4px 8px; margin-left: auto; }
+  .filter-count { font-size: 12px; color: var(--text3); padding: 0 16px 2px; }</style>
 </head>
 <body>
 
@@ -299,6 +313,18 @@
 
     <!-- MONTH FILTER -->
     <div class="month-strip" id="month-strip"></div>
+
+    <!-- FILTER BAR -->
+    <div class="filter-bar">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <span class="filter-label">Chi</span>
+        <button class="filter-clear-btn" id="filter-clear-btn" onclick="clearFilters()" style="display:none;">✕ Rimuovi filtri</button>
+      </div>
+      <div class="filter-row" id="filter-chi-row"></div>
+      <span class="filter-label">Categoria</span>
+      <div class="filter-row" id="filter-cat-row"></div>
+    </div>
+    <div class="filter-count" id="filter-count"></div>
 
     <!-- TRANSACTION LIST -->
     <div id="tx-list"></div>
@@ -833,6 +859,8 @@ const _saveCategorie = () => {
 // ═══════════════════════════════════════════════════
 let selMonth = { aa: 2026, mm: 4 };
 let selStatsMonth = { aa: 2026, mm: 4 };
+let filterChi = null;    // null = tutti, 'Enrico' | 'Ema'
+let filterCat = null;    // null = tutte, es. 'CASA'
 let formState = { aa:2026, mm:4, gg:20, chi:'Enrico', modo:'Bancomat', euro:'', cod:'', cat1:'', cat2:'', descr:'', note:'' };
 
 // ═══════════════════════════════════════════════════
@@ -887,17 +915,41 @@ function renderHome() {
     renderHome();
   });
 
-  const txs = filterByMonth(selMonth.aa, selMonth.mm);
-  const entrate = txs.filter(isIncome).reduce((s,m)=>s+m.euro,0);
-  const uscite = txs.filter(m=>!isIncome(m)).reduce((s,m)=>s+Math.abs(m.euro),0);
-  const saldo = entrate - uscite;
+  // ── base: tutti i movimenti del mese ──
+  const allTxs = filterByMonth(selMonth.aa, selMonth.mm);
 
+  // ── saldo hero: sempre sul mese completo (no filtri) ──
+  const entrate = allTxs.filter(isIncome).reduce((s,m)=>s+m.euro,0);
+  const uscite  = allTxs.filter(m=>!isIncome(m)).reduce((s,m)=>s+Math.abs(m.euro),0);
+  const saldo   = entrate - uscite;
   document.getElementById('hero-saldo').textContent = (saldo>=0?'':'-') + fmt(saldo);
   document.getElementById('hero-entrate').textContent = fmt(entrate);
   document.getElementById('hero-uscite').textContent = fmt(uscite);
   document.getElementById('hero-contanti').textContent = (saldoContanti >= 0 ? '' : '-') + fmt(saldoContanti);
 
-  // Group by day
+  // ── render filter bar chi ──
+  renderChiFilterChips(allTxs);
+
+  // ── render filter bar categorie ──
+  renderCatFilterChips(allTxs);
+
+  // ── applica filtri alla lista ──
+  let txs = allTxs;
+  if (filterChi) txs = txs.filter(m => m.chi === filterChi);
+  if (filterCat) txs = txs.filter(m => m.cat1 === filterCat);
+
+  // ── pulsante clear e contatore ──
+  const hasFilter = filterChi || filterCat;
+  document.getElementById('filter-clear-btn').style.display = hasFilter ? 'block' : 'none';
+  const countEl = document.getElementById('filter-count');
+  if (hasFilter) {
+    const tot = txs.filter(m=>!isIncome(m)).reduce((s,m)=>s+Math.abs(m.euro),0);
+    countEl.textContent = `${txs.length} movimento/i filtrati · Totale uscite: ${fmt(tot)}`;
+  } else {
+    countEl.textContent = '';
+  }
+
+  // ── lista raggruppata per giorno ──
   const byDay = {};
   txs.sort((a,b) => (b.aa*10000+b.mm*100+b.gg)-(a.aa*10000+a.mm*100+a.gg)).forEach(m => {
     const k = `${m.gg}/${m.mm}/${m.aa}`;
@@ -916,43 +968,112 @@ function renderHome() {
     const dayNames = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
     hdr.textContent = dayNames[d.getDay()] + ' ' + gg + ' ' + MESI[mm-1] + ' ' + aa;
     container.appendChild(hdr);
-
     const card = document.createElement('div');
     card.className = 'card';
-    txList.forEach(m => {
-      card.appendChild(makeTxRow(m));
-    });
+    txList.forEach(m => card.appendChild(makeTxRow(m)));
     container.appendChild(card);
   });
 
   if (txs.length === 0) {
-    container.innerHTML = '<div style="text-align:center;padding:40px 16px;color:var(--text3);"><div style="font-size:40px;margin-bottom:12px;">📭</div><div>Nessun movimento per questo mese</div></div>';
+    const msg = hasFilter
+      ? `<div style="font-size:36px;margin-bottom:12px;">🔎</div><div>Nessun movimento con i filtri selezionati</div><div style="font-size:13px;margin-top:8px;color:var(--text3);">Prova a rimuovere un filtro</div>`
+      : `<div style="font-size:40px;margin-bottom:12px;">📭</div><div>Nessun movimento per questo mese</div>`;
+    container.innerHTML = `<div style="text-align:center;padding:40px 16px;color:var(--text3);">${msg}</div>`;
   }
+}
+
+function renderChiFilterChips(allTxs) {
+  const el = document.getElementById('filter-chi-row');
+  el.innerHTML = '';
+
+  // chip "Tutti"
+  const chipAll = document.createElement('div');
+  chipAll.className = 'filter-chip' + (!filterChi ? ' active' : '');
+  chipAll.innerHTML = '<span class="filter-chip-icon">👥</span> Tutti';
+  chipAll.onclick = () => { filterChi = null; renderHome(); };
+  el.appendChild(chipAll);
+
+  // chip per ogni persona presente nel mese
+  const persone = [...new Set(allTxs.map(m=>m.chi).filter(Boolean))].sort();
+  persone.forEach(chi => {
+    const tot = allTxs.filter(m=>m.chi===chi && !isIncome(m)).reduce((s,m)=>s+Math.abs(m.euro),0);
+    const chip = document.createElement('div');
+    chip.className = 'filter-chip' + (filterChi===chi ? ' active' : '');
+    chip.innerHTML = `<span class="filter-chip-icon">${chi==='Enrico'?'👨':'👩'}</span> ${chi} <span style="opacity:0.7;font-size:11px;">${fmt(tot)}</span>`;
+    chip.onclick = () => { filterChi = filterChi===chi ? null : chi; renderHome(); };
+    el.appendChild(chip);
+  });
+}
+
+function renderCatFilterChips(allTxs) {
+  const el = document.getElementById('filter-cat-row');
+  el.innerHTML = '';
+
+  // chip "Tutte"
+  const chipAll = document.createElement('div');
+  chipAll.className = 'filter-chip' + (!filterCat ? ' active' : '');
+  chipAll.innerHTML = '<span class="filter-chip-icon">🔖</span> Tutte';
+  chipAll.onclick = () => { filterCat = null; renderHome(); };
+  el.appendChild(chipAll);
+
+  // categorie presenti nel mese, ordinate per totale uscite
+  const catTotals = {};
+  allTxs.filter(m=>!isIncome(m)).forEach(m => {
+    catTotals[m.cat1] = (catTotals[m.cat1]||0) + Math.abs(m.euro);
+  });
+  Object.entries(catTotals)
+    .sort((a,b) => b[1]-a[1])
+    .forEach(([cat, tot]) => {
+      const color = CAT_COLORS[cat] || '#8E8E93';
+      const icon  = CAT_ICONS[cat]  || '📦';
+      const chip  = document.createElement('div');
+      const isActive = filterCat === cat;
+      chip.className = 'filter-chip' + (isActive ? ' active-cat' : '');
+      chip.style.borderColor = isActive ? color : '';
+      chip.style.background  = isActive ? color : '';
+      chip.style.color       = isActive ? 'white' : '';
+      chip.innerHTML = `<span class="filter-chip-icon">${icon}</span> ${cat} <span style="opacity:0.75;font-size:11px;">${fmt(tot)}</span>`;
+      chip.onclick = () => { filterCat = filterCat===cat ? null : cat; renderHome(); };
+      el.appendChild(chip);
+    });
+}
+
+function clearFilters() {
+  filterChi = null;
+  filterCat = null;
+  renderHome();
 }
 
 function makeTxRow(m) {
   const row = document.createElement('div');
   row.className = 'card-row';
+  row.style.alignItems = 'flex-start';
 
   const color = CAT_COLORS[m.cat1] || '#8E8E93';
   const icon = CAT_ICONS[m.cat1] || '📦';
   const income = isIncome(m);
   const isCash = isContanti(m.modo);
 
+  const cat2part = m.cat2 && m.cat2 !== '.' ? ` · ${m.cat2}` : '';
+  const notePart = m.note ? `<div class="tx-note">${m.note}</div>` : '';
+
   row.innerHTML = `
-    <div class="tx-icon" style="background:${color}22;">${icon}</div>
+    <div class="tx-icon" style="background:${color}22;margin-top:2px;">${icon}</div>
     <div class="tx-body">
-      <div class="tx-title">${m.descr||m.cat2}</div>
-      <div class="tx-sub">${m.chi} · <span style="${isCash?'color:var(--orange);font-weight:600;':''}">${m.modo}</span>${m.note?' · '+m.note:''}</div>
-    </div>
-    <div class="tx-right">
-      <div class="tx-amount ${income?'income':'expense'}">${income?'+':'-'}${fmt(m.euro)}</div>
-      <div class="tx-date-small" style="display:flex;gap:4px;align-items:center;justify-content:flex-end;">
-        ${isCash ? '<span style="font-size:10px;">💵</span>' : ''}
-        <span>${m.cat2}</span>
+      <div class="tx-sub" style="margin-bottom:2px;">
+        <span style="font-weight:600;color:${color};">${m.cat1}</span>${cat2part}
       </div>
+      <div class="tx-title">${m.descr || m.cat2 || '—'}</div>
+      <div class="tx-sub" style="margin-top:2px;">
+        ${m.chi} · <span style="${isCash?'color:var(--orange);font-weight:600;':''}">${m.modo}</span>
+      </div>
+      ${notePart}
     </div>
-    <button onclick="deleteMov(event,${m.id})" style="margin-left:8px;width:28px;height:28px;border-radius:8px;background:rgba(255,59,48,0.12);border:none;cursor:pointer;font-size:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;">🗑️</button>
+    <div class="tx-right" style="padding-top:2px;">
+      <div class="tx-amount ${income?'income':'expense'}">${income?'+':'-'}${fmt(m.euro)}</div>
+      ${isCash ? '<div style="font-size:11px;text-align:right;margin-top:2px;">💵</div>' : ''}
+    </div>
+    <button onclick="deleteMov(event,${m.id})" style="margin-left:6px;margin-top:2px;width:28px;height:28px;border-radius:8px;background:rgba(255,59,48,0.10);border:none;cursor:pointer;font-size:13px;flex-shrink:0;display:flex;align-items:center;justify-content:center;">🗑️</button>
   `;
   return row;
 }
